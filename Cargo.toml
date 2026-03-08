@@ -1,0 +1,29 @@
+[package]
+name = "mcp-search"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["clock", "std"] }
+fastembed = "4.1"
+globset = "0.4"
+ignore = "0.4"
+libloading = "0.8"
+notify = "6.1"
+reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+thiserror = "1.0"
+tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "io-util", "io-std", "sync", "fs", "time"] }
+tokio-stream = "0.1"
+tree-sitter = "0.26.5"
+uuid = { version = "1.11", features = ["v4"] }
+toml = "0.8"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+
+# Vector store
+lancedb = "0.26.2"
+arrow-array = "57.3.0"
+arrow-schema = "57.3.0"
