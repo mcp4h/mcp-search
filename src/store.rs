@@ -388,28 +388,31 @@ impl VectorStore for LanceDbStore {
 			for row in 0..batch.num_rows() {
 				let file_path_str = file_path.value(row);
 				let path = PathBuf::from(file_path_str);
-				if !filter.allowed_roots.is_empty()
-					&& !filter.allowed_roots
-						.iter()
-						.any(|root| path.starts_with(root)) {
-					continue;
-				}
-				let mut allowed = true;
-				for root in &filter.allowed_roots {
-					if path.starts_with(root) {
-						if !Self::path_allowed(
-							&path,
-							root,
-							&allow_set,
-							&deny_set
-						) {
-							allowed = false;
-						}
-						break;
+				let is_content = file_path_str.starts_with("content://");
+				if !is_content {
+					if !filter.allowed_roots.is_empty()
+						&& !filter.allowed_roots
+							.iter()
+							.any(|root| path.starts_with(root)) {
+						continue;
 					}
-				}
-				if !allowed {
-					continue;
+					let mut allowed = true;
+					for root in &filter.allowed_roots {
+						if path.starts_with(root) {
+							if !Self::path_allowed(
+								&path,
+								root,
+								&allow_set,
+								&deny_set
+							) {
+								allowed = false;
+							}
+							break;
+						}
+					}
+					if !allowed {
+						continue;
+					}
 				}
 				let lang = language.value(row);
 				if !filter.allow_languages.is_empty()

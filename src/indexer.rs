@@ -24,6 +24,7 @@ pub async fn index_roots(
 	languages: Arc<LanguageRegistry>,
 	embedder: Arc<dyn Embedder>,
 	store: Arc<dyn VectorStore>) -> Result<()> {
+	cleanup_outside_roots(&store, &config.roots).await?;
 	let mut paths = Vec::new();
 	for root in &config.roots {
 		let mut walker = WalkBuilder::new(root);
@@ -142,6 +143,23 @@ async fn cleanup_removed_files(store: &Arc<dyn VectorStore>, seen: &HashSet<Stri
 			store.delete_file(&path).await?;
 			store.delete_source("file", &source_id).await?;
 		}
+	}
+	Ok(())
+}
+
+async fn cleanup_outside_roots(store: &Arc<dyn VectorStore>, roots: &[PathBuf]) -> Result<()> {
+	if roots.is_empty() {
+		return Ok(());
+	}
+	let sources = store.list_sources("file").await?;
+	for source_id in sources {
+		let path = PathBuf::from(&source_id);
+		if roots.iter().any(|root| path.starts_with(root)) {
+			continue;
+		}
+		logger::info(format!("removing file outside roots: {}", source_id));
+		store.delete_file(&path).await?;
+		store.delete_source("file", &source_id).await?;
 	}
 	Ok(())
 }

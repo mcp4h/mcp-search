@@ -21,9 +21,6 @@ pub async fn search(
 		.and_then(Value::as_u64)
 		.unwrap_or(5);
 	let call_config = policy::resolve_call_config(config, meta)?;
-	if call_config.roots.is_empty() {
-		return Err(anyhow!("no roots configured"));
-	}
 	let mut top_k = top_k as usize;
 	if let Some(limit) = call_config.max_results {
 		top_k = top_k.min(limit);
@@ -37,6 +34,7 @@ pub async fn search(
 		.map(
 			|result| {
 				let text = strip_chunk_header(&result.chunk.text);
+				let (source_type, source_id, external_metadata, parent_context) = split_source_metadata(&result.chunk.metadata);
 				json!({
 					"score": result.score,
 					"text": text,
@@ -46,7 +44,12 @@ pub async fn search(
 				"node_kind": result.chunk.metadata.node_kind,
 				"start_line": result.chunk.metadata.start_line,
 				"end_line": result.chunk.metadata.end_line,
-				"parent_context": result.chunk.metadata.parent_context,
+				"parent_context": parent_context,
+				"source": {
+					"type": source_type,
+					"id": source_id
+				},
+				"external_metadata": external_metadata
 			}
 				})
 			})
@@ -65,6 +68,39 @@ fn strip_chunk_header(text: &str) -> String {
 		return text[index + 4..].to_string();
 	}
 	text.to_string()
+}
+
+fn split_source_metadata(
+    metadata: &crate::types::ChunkMetadata,
+) -> (String, String, Option<Value>, Option<String>) {
+    let path_text = metadata.file_path.to_string_lossy();
+    if let Some(id) = path_text.strip_prefix("content://") {
+        let (external_metadata, parent_context) = match metadata.parent_context.as_ref() {
+            Some(value) => parse_external_context(value),
+            None => (None, None),
+        };
+        return (
+            "content".to_string(),
+            id.to_string(),
+            external_metadata,
+            parent_context
+        );
+    }
+    (
+        "file".to_string(),
+        path_text.to_string(),
+        None,
+        metadata.parent_context.clone()
+    )
+}
+
+fn parse_external_context(value: &str) -> (Option<Value>, Option<String>) {
+    if let Ok(Value::Object(obj)) = serde_json::from_str::<Value>(value) {
+        let external = obj.get("external").cloned();
+        let path = obj.get("path").and_then(Value::as_str).map(|item| item.to_string());
+        return (external, path);
+    }
+    (None, Some(value.to_string()))
 }
 
 fn build_filter(call_config: &policy::CallConfig) -> SearchFilter {
