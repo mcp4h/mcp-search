@@ -119,7 +119,7 @@ async fn route(state: &mut AppState, req: &Request) -> Result<Value> {
 				"capabilities": {
 				"resources": { "list": true, "read": true },
 				"tools": { "list": true, "call": true },
-				"experimental": { "policy": true },
+				"experimental": { "policy": { "enabled": true } },
 				"_meta": { "server": "mcp-search", "vendor": "celerex" }
 			}
 			})
