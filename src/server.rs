@@ -478,12 +478,19 @@ async fn content_update(state: &mut AppState, req: &Request) -> Result<Value> {
     else {
         Some(serde_json::to_string(&metadata)?)
     };
-    let resources = state.ensure_search_resources().await?;
-    let registry = state.ensure_language_registry().await?;
+    let (chunk_max_tokens, chunk_overlap_tokens) = (
+        state.config.chunk_max_tokens,
+        state.config.chunk_overlap_tokens
+    );
+    let registry = Arc::clone(state.ensure_language_registry().await?);
     let language = detect_language_by_name(registry.as_ref(), language)
         .ok_or_else(|| anyhow!("unknown language: {}", language))?;
     let hash = hash_content(content, language.name.as_str(), metadata_json.as_deref());
-    if let Some(existing) = resources.store
+    let (embedder, store) = {
+        let resources = state.ensure_search_resources().await?;
+        (Arc::clone(&resources.embedder), Arc::clone(&resources.store))
+    };
+    if let Some(existing) = store
         .get_source_hash("content", id)
         .await? {
 		if existing == hash {
@@ -500,8 +507,8 @@ async fn content_update(state: &mut AppState, req: &Request) -> Result<Value> {
         &language,
         &file_path,
         content,
-        state.config.chunk_max_tokens,
-        state.config.chunk_overlap_tokens
+        chunk_max_tokens,
+        chunk_overlap_tokens
     )?;
     for chunk in &mut chunks {
         if let Some(meta) = &metadata_json {
@@ -523,7 +530,6 @@ async fn content_update(state: &mut AppState, req: &Request) -> Result<Value> {
 	let texts = chunks.iter()
 		.map(|chunk| chunk.text.clone())
 		.collect::<Vec<_>>();
-	let embedder = Arc::clone(&resources.embedder);
 	let embeddings = tokio::task::spawn_blocking(move || embedder.embed(&texts)).await.map_err(|err| anyhow!("embedding task failed: {}", err))??;
 	if embeddings.len() != chunks.len() {
 		return Err(anyhow!("embedding count mismatch"));
@@ -532,10 +538,10 @@ async fn content_update(state: &mut AppState, req: &Request) -> Result<Value> {
 	for (chunk, embedding) in chunks.into_iter().zip(embeddings.into_iter()) {
 		embedded.push(crate::types::EmbeddedChunk { chunk, embedding });
 	}
-	resources.store.delete_file(&file_path).await?;
-	resources.store.delete_source("content", id).await?;
-	resources.store.upsert_chunks(&embedded).await?;
-    resources.store.upsert_source_hash("content", id, &hash).await?;
+	store.delete_file(&file_path).await?;
+	store.delete_source("content", id).await?;
+	store.upsert_chunks(&embedded).await?;
+    store.upsert_source_hash("content", id, &hash).await?;
     Ok(json!({
         "id": id,
         "hash": hash,
